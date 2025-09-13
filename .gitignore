@@ -2,3 +2,8 @@ tests/_pycache_/
 __pycache__/
 .vscode/
 pytest_cache/
+.ipynb_checkpoints/
+notebooks/_outputs/
+results/
+*.h5
+*.csv
