@@ -29,3 +29,17 @@ def write_spikes_h5(path: str, gids: Iterable[int], times: Iterable[float]) -> N
         grp.create_dataset('node_ids', data=gids, compression='gzip')
         grp.create_dataset('timestamps', data=times, compression='gzip')
 
+
+def write_rates_h5(path: str, rates: np.ndarray, frame_rate: float) -> None:
+    """Write rates to HDF5 in a minimal layout.
+
+    Datasets:
+      - rates/values: (T,) or (N,T)
+      - rates attrs: frame_rate (Hz), unit='Hz'
+    """
+    arr = np.asarray(rates)
+    with h5py.File(path, 'w') as f:
+        grp = f.create_group('rates')
+        dset = grp.create_dataset('values', data=arr, compression='gzip')
+        grp.attrs.create('frame_rate', float(frame_rate))
+        grp.attrs.create('unit', 'Hz')
