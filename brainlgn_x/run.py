@@ -65,8 +65,8 @@ def build_movie(cfg: Dict[str, Any]) -> Movie:
         raise ValueError(f"Unknown input module: {mod}")
 
 
-def build_neuron(cfg: Dict[str, Any], movie: Movie) -> LGNNeuron:
-    ncfg = cfg.get('neuron', {})
+def _build_single_neuron(ncfg: Dict[str, Any]) -> LGNNeuron:
+    """Build a single LGNNeuron from a neuron-config dict."""
     # Spatial
     sdict = ncfg.get('spatial', {})
     sigma = sdict.get('sigma', (2.0, 2.0))
@@ -75,7 +75,7 @@ def build_neuron(cfg: Dict[str, Any], movie: Movie) -> LGNNeuron:
     translate = sdict.get('translate', (0.0, 0.0))
     spatial = GaussianSpatialFilter(translate=tuple(translate), sigma=tuple(sigma))
 
-    # Temporal (defaults matching our tests)
+    # Temporal
     tdict = ncfg.get('temporal', {})
     weights = tuple(tdict.get('weights', (0.4, -0.3)))
     kpeaks = tuple(tdict.get('kpeaks', (20.0, 60.0)))
@@ -83,13 +83,16 @@ def build_neuron(cfg: Dict[str, Any], movie: Movie) -> LGNNeuron:
     temporal = TemporalFilterCosineBump(weights=weights, kpeaks=kpeaks, delays=delays)
 
     amplitude = float(ncfg.get('amplitude', 1.0))
-    st = SpatioTemporalFilter(spatial, temporal, amplitude=amplitude)
-
     # Transfer: ReLU with bias
     bias = float(ncfg.get('transfer', {}).get('bias', 0.0))
     transfer = ScalarTransferFunction(f"Max(0, s + {bias})")
 
     return LGNNeuron(spatial_filter=spatial, temporal_filter=temporal, transfer_function=transfer, amplitude=amplitude)
+
+
+def build_neuron(cfg: Dict[str, Any], movie: Movie) -> LGNNeuron:
+    ncfg = cfg.get('neuron', {})
+    return _build_single_neuron(ncfg)
 
 
 def run_config(cfg: Dict[str, Any]) -> None:
@@ -102,20 +105,57 @@ def run_config(cfg: Dict[str, Any]) -> None:
     # Build movie
     movie = build_movie(cfg)
 
-    # Build neuron (MVP: single)
-    neuron = build_neuron(cfg, movie)
-
-    # Evaluate rates
+    # Build neurons: support single or list under cfg['neurons']
+    neurons_cfg = cfg.get('neurons', None)
     backend = cfg.get('run', {}).get('backend', os.getenv('BRAINLGN_BACKEND', 'bmtk'))
     separable = bool(cfg.get('run', {}).get('separable', True))
     downsample = int(cfg.get('run', {}).get('downsample', 1))
-    rates = neuron.evaluate(movie.data, separable=separable, frame_rate=movie.frame_rate, backend=backend, downsample=downsample)
+    if neurons_cfg:
+        # Multi-neuron path
+        # Build BMTK filters/transfer for reuse in BS backend
+        lfs = []
+        trs = []
+        neurons = []
+        for ncfg in neurons_cfg:
+            # For parity with BS multi path, keep separate structures
+            sdict = ncfg.get('spatial', {})
+            sigma = sdict.get('sigma', (2.0, 2.0))
+            if isinstance(sigma, (int, float)):
+                sigma = (float(sigma), float(sigma))
+            translate = sdict.get('translate', (0.0, 0.0))
+            spatial = GaussianSpatialFilter(translate=tuple(translate), sigma=tuple(sigma))
+            tdict = ncfg.get('temporal', {})
+            weights = tuple(tdict.get('weights', (0.4, -0.3)))
+            kpeaks = tuple(tdict.get('kpeaks', (20.0, 60.0)))
+            delays = tuple(tdict.get('delays', (0, 0)))
+            temporal = TemporalFilterCosineBump(weights=weights, kpeaks=kpeaks, delays=delays)
+            amplitude = float(ncfg.get('amplitude', 1.0))
+            lfs.append(SpatioTemporalFilter(spatial, temporal, amplitude=amplitude))
+            bias = float(ncfg.get('transfer', {}).get('bias', 0.0))
+            trs.append(ScalarTransferFunction(f"Max(0, s + {bias})"))
+            # For fallback bmtk loop
+            neurons.append(LGNNeuron(spatial, temporal, trs[-1], amplitude=amplitude))
+
+        if backend.lower() in ('brainstate', 'jax', 'bs'):
+            from .bs_backend import eval_separable_multi
+            rates = eval_separable_multi(lfs, trs, movie.data, frame_rate=movie.frame_rate, downsample=downsample)
+        else:
+            # Loop BMTK per neuron
+            rates_list = []
+            for nrn in neurons:
+                r = nrn.evaluate(movie.data, separable=separable, frame_rate=movie.frame_rate, backend='bmtk', downsample=downsample)
+                rates_list.append(r)
+            rates = np.stack(rates_list, axis=0)  # (N,T)
+    else:
+        # Single-neuron path
+        neuron = build_neuron(cfg, movie)
+        rates = neuron.evaluate(movie.data, separable=separable, frame_rate=movie.frame_rate, backend=backend, downsample=downsample)
 
     # Write rates (optional)
     if out.get('rates_h5'):
         write_rates_h5(os.path.join(out_dir, out['rates_h5']), rates, frame_rate=movie.frame_rate / downsample)
 
-    # Poisson spikes
+    # Poisson spikes (supports (T,) or (N,T))
     dt = 1.0 / (movie.frame_rate / downsample)
     base_seed = int(cfg.get('run', {}).get('base_seed', 0))
     gids, times = generate_inhomogeneous_poisson(rates, dt=dt, base_seed=base_seed)
@@ -142,4 +182,3 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
-

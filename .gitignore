@@ -4,6 +4,7 @@ __pycache__/
 pytest_cache/
 .ipynb_checkpoints/
 notebooks/_outputs/
+notebooks/_outputs_multi/
 results/
 *.h5
 *.csv
