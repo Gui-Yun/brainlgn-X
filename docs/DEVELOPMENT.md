@@ -1,70 +1,72 @@
-# BrainLGN-X 开发日志
+BrainLGN-X Development Log
+==========================
 
-## 🎯 开发策略 (基础组件优先)
+@author: gray
+@date: 2025-09-12
+@e-mail: oswin0001@qq.com
+@Liu-Lab
 
-按照从简单到复杂的原则，逐步验证每个组件：
+---------------------------
+Strategy (foundations first)
+- Phase 1: Single-neuron MVP (current)
+  - Implement LGN LNUnit interface
+  - Validate numerics against BMTK (parity tests)
+  - Add unit tests
+- Phase 2: Visual stimuli
+  - GratingMovie, FullFieldFlashMovie
+  - Stimulus validation
+- Phase 3: Network
+  - Multi-neuron LGN network, connectivity, batch simulation
+- Phase 4: BMTK compatibility
+  - API wrapper, JSON config parser, HDF5 output parity
 
-### Phase 1: 单个神经元 ✋ (当前阶段)
-1. **实现基础LGN神经元** - 用BrainState重写LNUnit
-2. **验证响应正确性** - 与BMTK对比数值结果 
-3. **单元测试** - 确保功能稳定
+Current Tasks
+- Single LGN neuron: accept stimulus, spatio-temporal filter, produce rates (Hz), match BMTK numerics.
+- Parity visualization: notebooks/visualize_parity.ipynb
+- Files of interest: brainlgn_x/neuron.py, brainlgn_x/filters.py, brainlgn_x/transfer.py,
+  tests/test_bmtk_parity.py, tests/test_bmtk_parity_more.py
 
-### Phase 2: 视觉刺激
-1. **实现光栅刺激** - GratingMovie 
-2. **实现闪光刺激** - FullFieldFlashMovie
-3. **验证刺激生成** - 确保视觉输入正确
+Validation Plan
+- Build identical inputs/stimuli and filter stacks.
+- Compare outputs vs BMTK; target error <= 1e-12 (absolute) in unit tests.
+- Visualize overlay/residual/scatter via the notebook for sanity.
 
-### Phase 3: 网络层面  
-1. **多神经元网络** - 构建LGN群体
-2. **连接管理** - 神经元间连接
-3. **批量仿真** - 整体网络响应
+Progress Checklist
+- [x] Project structure
+- [x] Development strategy
+- [x] Single neuron interface (MVP) aligned
+- [x] Neuron numerical validation (parity with BMTK, separable and non-separable)
+- [x] Parity visualization notebook
+- [ ] Visual stimuli (Grating/Flash generators)
+- [ ] Network scaffold
+- [ ] BMTK/SONATA output layer (HDF5/CSV)
 
-### Phase 4: BMTK兼容
-1. **API包装** - 保持接口一致
-2. **配置兼容** - JSON配置解析
-3. **输出格式** - HDF5文件兼容
+Change Log
+----------
 
-## 📝 当前任务
+2025-09-13
+- Added numerical parity tests:
+  - tests/test_bmtk_parity.py (baseline separable)
+  - tests/test_bmtk_parity_more.py (non-separable, downsample handling, OFF unit, bias, two-subfield sum)
+- Separable downsample handling: evaluate full BMTK path then slice locally to mirror reference.
+- Added visualization notebook: notebooks/visualize_parity.ipynb (overlay/residual/scatter/hist, metrics printout).
+- BrainState import made optional with stub fallback to avoid env import-time issues during parity phase.
+- New conda env (Python 3.11) prepared; bmtk/brainstate installed for development.
 
-### 正在进行: 单个LGN神经元实现
+2025-09-12
+- Added BMTK pass-through wrappers to ensure numerical/API parity:
+  - brainlgn_x/filters.py re-exports GaussianSpatialFilter, TemporalFilterCosineBump, SpatioTemporalFilter, etc.
+  - brainlgn_x/transfer.py re-exports ScalarTransferFunction, MultiTransferFunction.
+- neuron pipeline alignment:
+  - ON/OFF via SpatioTemporalFilter amplitude sign.
+  - evaluate(stimulus, separable=True, downsample=1, threshold=None); update() aliases evaluate().
+- Notes:
+  - Requires bmtk installed (imports from bmtk.simulator.filternet.lgnmodel.*).
+  - Temporal kernel default step is 1 ms (nkt=600). Align external frame_rate/dt at caller.
+  - Spatial translate uses (x,y) while stimulus is indexed [t,y,x], consistent with BMTK.
 
-**目标**: 创建一个完全功能的LGN神经元，能够：
-- 接受视觉输入
-- 进行时空滤波
-- 生成尖峰输出
-- 数值结果与BMTK一致
-
-**实现文件**:
-- `brainlgn_x/neuron.py` - 神经元主体
-- `brainlgn_x/filters.py` - 滤波器实现  
-- `tests/test_neuron.py` - 单元测试
-
-**验证方法**:
-```python
-# 简单测试：给定输入，验证输出
-neuron = LGNNeuron(...)
-stimulus = create_simple_stimulus()
-response = neuron.process(stimulus)
-assert np.allclose(response, expected_bmtk_response)
-```
-
-## 🧪 验证策略
-
-每个阶段都要完成数值验证：
-1. 创建相同的输入
-2. 对比BMTK和BrainState的输出
-3. 确保误差 < 1e-10
-4. 通过单元测试
-
-## 📊 开发进度
-
-- [x] 项目结构设计
-- [x] 开发策略制定
-- [ ] 单个神经元实现
-- [ ] 神经元响应验证
-- [ ] 视觉刺激系统
-- [ ] 网络层构建
-- [ ] BMTK兼容层
-
----
-*最后更新: 2024-09-12*
+Status (honest snapshot)
+- Compute path: currently uses BMTK LNUnit + Cursor under-the-hood for exact parity. BrainState backend not yet wired.
+- Inputs: random stimuli used for tests; dedicated visual stimulus generators are TODO.
+- Outputs: rates (Hz) validated; Poisson spikes + HDF5/CSV writers pending.
+- Backend toggle: not yet exposed; plan to add env switch (e.g., BRAINLGN_BACKEND=bmtk/brainstate).
