@@ -38,7 +38,7 @@ Progress Checklist
 - [x] Neuron numerical validation (parity with BMTK, separable and non-separable)
 - [x] Parity visualization notebook
 - [x] Poisson spikes + CSV/H5 writers (minimal SONATA-like)
-- [ ] Visual stimuli (Grating/Flash generators)
+- [x] Visual stimuli (Grating/Flash generators)
 - [ ] Network scaffold
 - [ ] BMTK/SONATA output layer (HDF5/CSV)
 
@@ -57,7 +57,11 @@ Change Log
 - Added Poisson + IO:
   - brainlgn_x/poisson.py: inhomogeneous Poisson (per-bin Bernoulli).
   - brainlgn_x/io_output.py: write_spikes_csv/write_spikes_h5 (spikes/node_ids,timestamps).
-  - tests/test_poisson_and_io.py: mean-rate tolerance, reproducibility, IO roundtrip.
+ - tests/test_poisson_and_io.py: mean-rate tolerance, reproducibility, IO roundtrip.
+
+- Added visual stimuli module:
+  - brainlgn_x/stimuli.py: Movie container, drifting_grating(), full_field_flash(), array/NPY/video loaders.
+  - tests/test_stimuli.py: shape/range checks, temporal peak (FFT) for grating, flash segment correctness, t_range dt.
 
 Status (honest snapshot)
 - Compute: BMTK parity path is default; JAX backend (separable) available and parity-tested (allow tiny FP tolerance).
