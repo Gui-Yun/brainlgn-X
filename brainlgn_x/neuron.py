@@ -12,6 +12,7 @@ BrainState 版本的 LGN 神经元（计算逻辑对齐 BMTK LNUnit）。
 - 仅实现可分离（separable=True）管线：空间卷积 -> 时间卷积 -> 传递函数。
 """
 
+import os
 import numpy as np
 # Optional brainstate dependency:
 # Some environments (e.g., Python < 3.10) may fail when importing brainstate/brainevent
@@ -52,7 +53,7 @@ class LGNNeuron(bs.DynamicalSystem):
             amplitude=self.amplitude,
         )
 
-    def evaluate(self, stimulus, separable=True, downsample=1, threshold=None, frame_rate=1000.0):
+    def evaluate(self, stimulus, separable=True, downsample=1, threshold=None, frame_rate=1000.0, backend=None):
         """
         计算神经元对刺激的响应（放电率时间序列）。
 
@@ -64,8 +65,20 @@ class LGNNeuron(bs.DynamicalSystem):
         Returns:
             rate: (t,) 非负放电率（Hz）
         """
-        # 为确保与 BMTK 数值完全一致，这里直接使用 BMTK 的 LNUnit + Cursor 进行评估。
-        # 注意：separable=True 时，BMTK 不支持 threshold 偏置参数，需在 transfer function 中体现偏置。
+        # 后端选择：参数优先，其次环境变量，默认 bmtk
+        _backend = backend or os.getenv('BRAINLGN_BACKEND', 'bmtk').lower()
+
+        if _backend in ('brainstate', 'jax', 'bs'):
+            from . import bs_backend as bsx
+            if not separable:
+                return bsx.eval_nonseparable(self.linear_filter, self.transfer_function,
+                                             np.array(stimulus, copy=False), float(frame_rate),
+                                             downsample=int(downsample))
+            return bsx.eval_separable(self.linear_filter, self.transfer_function,
+                                      np.array(stimulus, copy=False), float(frame_rate),
+                                      downsample=int(downsample))
+
+        # 默认：BMTK 参考实现（Parity）
         from bmtk.simulator.filternet.lgnmodel.lnunit import LNUnit
         from bmtk.simulator.filternet.lgnmodel.movie import Movie
 
@@ -73,17 +86,15 @@ class LGNNeuron(bs.DynamicalSystem):
         ln = LNUnit(self.linear_filter, self.transfer_function)
 
         if separable:
-            # BMTK 的 SeparableLNUnitCursor 不支持 downsample 参数，先完整评估再下采样
             t_vals, y_vals = ln.get_cursor(movie, separable=True).evaluate()
             rate = np.array(y_vals)
             if downsample and downsample > 1:
                 rate = rate[::int(downsample)]
-        else:
-            # 非分离路径走标准 cursor（允许 downsample, threshold）
-            t_vals, rate = ln.get_cursor(movie, separable=False, threshold=(threshold or 0.0)).evaluate(
-                downsample=int(downsample)
-            )
+            return rate
 
+        t_vals, rate = ln.get_cursor(movie, separable=False, threshold=(threshold or 0.0)).evaluate(
+            downsample=int(downsample)
+        )
         return rate
 
     # 兼容 update 命名（调用 evaluate）
