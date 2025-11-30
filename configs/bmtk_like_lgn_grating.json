@@ -1,0 +1,63 @@
+{
+  "manifest": {
+    "$BASE_DIR": ".",
+    "$OUTPUT_DIR": "${BASE_DIR}/results/bmtk_like_grating"
+  },
+  "target_simulator": "LGNModel",
+  "run": {
+    "tstop": 700.0,
+    "dt": 1.0,
+    "backend": "brainstate",
+    "base_seed": 123
+  },
+  "inputs": {
+    "LGN_spikes": {
+      "input_type": "movie",
+      "module": "grating",
+      "row_size": 120,
+      "col_size": 240,
+      "gray_screen_dur": 200.0,
+      "theta": 0.0,
+      "cpd": 0.04,
+      "temporal_f": 4.0,
+      "contrast": 0.8,
+      "frame_rate": 1000.0,
+      "evaluation_options": {
+        "downsample": 1,
+        "separable": true
+      }
+    }
+  },
+  "output": {
+    "output_dir": "${OUTPUT_DIR}",
+    "rates_h5": "rates.h5",
+    "spikes_csv": "spikes.csv",
+    "spikes_h5": "spikes.h5",
+    "overwrite_output_dir": true
+  },
+  "layout": {
+    "X_grids": 4,
+    "Y_grids": 3,
+    "X_len": 240.0,
+    "Y_len": 120.0
+  },
+  "cell_types": [
+    {
+      "name": "sON",
+      "n_per_tile": 1,
+      "spatial": {"sigma_range": [2.0, 3.0]},
+      "temporal": {"weights": [0.6, -0.4], "kpeaks": [15.0, 45.0], "delays": [0, 0], "jitter_percent": 0.05},
+      "amplitude_range": [1.5, 2.0],
+      "transfer": {"bias_range": [0.8, 1.2]}
+    },
+    {
+      "name": "sOFF",
+      "n_per_tile": 1,
+      "spatial": {"sigma_range": [2.0, 3.0]},
+      "temporal": {"weights": [0.5, -0.3], "kpeaks": [20.0, 60.0], "delays": [0, 0], "jitter_percent": 0.05},
+      "amplitude_range": [-2.0, -1.5],
+      "transfer": {"bias_range": [0.5, 1.0]}
+    }
+  ]
+}
+

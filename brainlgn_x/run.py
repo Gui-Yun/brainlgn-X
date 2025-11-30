@@ -17,6 +17,7 @@ from .transfer import ScalarTransferFunction
 from .neuron import LGNNeuron
 from .poisson import generate_inhomogeneous_poisson
 from .io_output import write_spikes_csv, write_spikes_h5, write_rates_h5
+from .generator import generate_population
 
 
 def _ensure_dir(path: str, overwrite: bool) -> None:
@@ -59,6 +60,25 @@ def build_movie(cfg: Dict[str, Any]) -> Movie:
         )
     elif mod == 'npy':
         return from_npy(inp['path'], frame_rate=fr)
+    elif mod == 'movie':
+        # Support simple NPZ movie files as in BMTK examples
+        import numpy as np
+        path = inp.get('data_file') or inp.get('path')
+        if path is None:
+            raise ValueError("movie input requires 'data_file' or 'path'.")
+        arr = None
+        if str(path).endswith('.npz'):
+            data = np.load(path)
+            # heuristics: use 'frames' if present, else first array
+            if 'frames' in data:
+                arr = data['frames']
+            else:
+                # pick the first
+                key = list(data.keys())[0]
+                arr = data[key]
+        else:
+            arr = np.load(path)
+        return Movie(arr, frame_rate=fr)
     elif mod == 'video':
         return from_video(inp['path'], to_gray=bool(inp.get('to_gray', True)), target_frame_rate=fr)
     else:
@@ -107,10 +127,26 @@ def run_config(cfg: Dict[str, Any]) -> None:
 
     # Build neurons: support single or list under cfg['neurons']
     neurons_cfg = cfg.get('neurons', None)
+    cell_types_cfg = cfg.get('cell_types', None)
+    layout_cfg = cfg.get('layout', None)
     backend = cfg.get('run', {}).get('backend', os.getenv('BRAINLGN_BACKEND', 'bmtk'))
     separable = bool(cfg.get('run', {}).get('separable', True))
     downsample = int(cfg.get('run', {}).get('downsample', 1))
-    if neurons_cfg:
+    if cell_types_cfg and layout_cfg:
+        # Generated population path
+        lfs, trs, meta = generate_population(cell_types_cfg, layout_cfg, base_seed=int(cfg.get('run', {}).get('base_seed', 0)))
+        if backend.lower() in ('brainstate', 'jax', 'bs'):
+            from .bs_backend import eval_separable_multi
+            rates = eval_separable_multi(lfs, trs, movie.data, frame_rate=movie.frame_rate, downsample=downsample)
+        else:
+            # Loop BMTK per neuron
+            rates_list = []
+            for lf, tr in zip(lfs, trs):
+                nrn = LGNNeuron(lf.spatial_filter, lf.temporal_filter, tr, amplitude=lf.amplitude)
+                r = nrn.evaluate(movie.data, separable=separable, frame_rate=movie.frame_rate, backend='bmtk', downsample=downsample)
+                rates_list.append(r)
+            rates = np.stack(rates_list, axis=0)
+    elif neurons_cfg:
         # Multi-neuron path
         # Build BMTK filters/transfer for reuse in BS backend
         lfs = []

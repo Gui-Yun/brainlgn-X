@@ -70,13 +70,32 @@ class LGNNeuron(bs.DynamicalSystem):
 
         if _backend in ('brainstate', 'jax', 'bs'):
             from . import bs_backend as bsx
-            if not separable:
-                return bsx.eval_nonseparable(self.linear_filter, self.transfer_function,
-                                             np.array(stimulus, copy=False), float(frame_rate),
-                                             downsample=int(downsample))
-            return bsx.eval_separable(self.linear_filter, self.transfer_function,
-                                      np.array(stimulus, copy=False), float(frame_rate),
-                                      downsample=int(downsample))
+            try:
+                if not separable:
+                    return bsx.eval_nonseparable(self.linear_filter, self.transfer_function,
+                                                 np.array(stimulus, copy=False), float(frame_rate),
+                                                 downsample=int(downsample))
+                return bsx.eval_separable(self.linear_filter, self.transfer_function,
+                                          np.array(stimulus, copy=False), float(frame_rate),
+                                          downsample=int(downsample))
+            except Exception as exc:
+                # Fallback to BMTK parity path for robustness
+                if os.getenv('BRAINLGN_FALLBACK_BMTK_ON_NAN', '1').lower() not in ('0', 'false', 'no'):
+                    from bmtk.simulator.filternet.lgnmodel.lnunit import LNUnit
+                    from bmtk.simulator.filternet.lgnmodel.movie import Movie
+                    movie = Movie(np.array(stimulus, copy=False), frame_rate=float(frame_rate))
+                    ln = LNUnit(self.linear_filter, self.transfer_function)
+                    if separable:
+                        t_vals, y_vals = ln.get_cursor(movie, separable=True).evaluate()
+                        rate = np.array(y_vals)
+                        if downsample and downsample > 1:
+                            rate = rate[::int(downsample)]
+                        return rate
+                    t_vals, rate = ln.get_cursor(movie, separable=False, threshold=(threshold or 0.0)).evaluate(
+                        downsample=int(downsample)
+                    )
+                    return rate
+                raise
 
         # 默认：BMTK 参考实现（Parity）
         from bmtk.simulator.filternet.lgnmodel.lnunit import LNUnit

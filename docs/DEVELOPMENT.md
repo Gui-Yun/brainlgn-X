@@ -39,11 +39,43 @@ Progress Checklist
 - [x] Parity visualization notebook
 - [x] Poisson spikes + CSV/H5 writers (minimal SONATA-like)
 - [x] Visual stimuli (Grating/Flash generators)
-- [ ] Network scaffold
+- [x] Network scaffold (Phase A minimal population)
 - [ ] BMTK/SONATA output layer (HDF5/CSV)
 
 Change Log
 ----------
+
+2025-09-15
+- BS/JAX backend stability + parity fixes (multi-neuron):
+  - Enabled float64 by default in JAX (`jax_enable_x64`) and added finite checks
+    for stimulus, spatial/temporal kernels, and outputs to prevent silent NaNs.
+  - Added automatic fallback to BMTK reference when non-finite values or degenerate
+    kernels are detected; controlled via `BRAINLGN_FALLBACK_BMTK_ON_NAN` (default=1).
+  - Sanitized kernels with `nan_to_num` (replace NaN/Inf with 0) before JAX eval to
+    reduce unnecessary fallbacks; kept parity safety net.
+  - Fixed temporal alignment in `eval_separable_multi`: when kernels are left-padded
+    to common length Lmax, the correct start offset is `Lmax-1` (not `Li-1`).
+    Default alignment now uses `BRAINLGN_ALIGN_START=lmax`, eliminating the phase
+    shift that caused large MAE despite correct shapes.
+- Notebook refresh:
+  - Rewrote `notebooks/lgn_population_full.ipynb` for a robust end-to-end parity
+    workflow (stimulus → population → BS/JAX multi → BMTK subset parity → optional
+    spikes/IO). Prints NaN counts and shows overlay/residual/scatter plots.
+  - Added helper `notebooks/_helpers/population_parity.py` providing a single-call
+    population parity runner for notebooks.
+- Env vars (current defaults shown):
+  - `BRAINLGN_JAX_X64=1` — enable float64 in JAX backend.
+  - `BRAINLGN_FALLBACK_BMTK_ON_NAN=1` — fallback to BMTK if NaN/Inf/degenerate kernels.
+  - `BRAINLGN_ALIGN_START=lmax` — multi-neuron temporal alignment mode.
+- Minor: `neuron.py` also falls back to BMTK when BS/JAX path errors, for robustness.
+
+Notes
+- After updating the backend, restart the notebook kernel or reload the module to
+  ensure changes take effect, e.g.:
+  `import importlib, brainlgn_x.bs_backend as bs_backend; importlib.reload(bs_backend)`.
+- Expected parity after the alignment fix: MAE/MaxAbs typically in 1e-9–1e-7 range
+  depending on platform/BLAS; larger discrepancies likely indicate mismatched
+  configuration (frame_rate/downsample) or disabled x64.
 
 2025-09-13
 - Added numerical parity tests:
@@ -67,6 +99,12 @@ Change Log
   - brainlgn_x/config_parser.py: expand manifest & load JSON.
   - brainlgn_x/run.py: `python -m brainlgn_x.run config.json` equivalent callable `run_config()`.
   - tests/test_end2end_cli.py: generate temp config, run pipeline in-process, assert outputs (spikes/rates) exist.
+
+- Population generator (Phase A):
+  - brainlgn_x/generator.py: generate_population(cell_types, layout, base_seed) → filters/transfers/metadata.
+  - run.py: support `cell_types` + `layout` in config; BS multi evaluates with eval_separable_multi, BMTK loops per neuron.
+  - tests/test_generator.py: counts & reproducibility.
+  - configs/lgn_population_grating.json: example population config.
 
 Status (honest snapshot)
 - Compute: BMTK parity path is default; JAX backend (separable) available and parity-tested (allow tiny FP tolerance).

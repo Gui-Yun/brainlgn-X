@@ -8,3 +8,7 @@ notebooks/_outputs_multi/
 results/
 *.h5
 *.csv
+notebooks/_outputs_population/
+notebooks/$BASE_DIR/
+notebooks/results/
+notebooks/__helpers/
